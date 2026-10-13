@@ -7,3 +7,4 @@ __pycache__/
 *.py[cod]
 ~$*
 main_backup.py
+sample_data/

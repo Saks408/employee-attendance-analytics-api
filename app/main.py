@@ -211,16 +211,30 @@ def serialize_employee(doc: dict) -> dict:
     return doc
 
 
+
 def serialize_attendance(doc: dict) -> dict:
     doc.pop("_id", None)
     for key in ("punch_in", "punch_out"):
         if isinstance(doc.get(key), datetime):
             doc[key] = epoch_ms(doc[key])
+
     doc.setdefault("history", [])
     doc.setdefault("half_day", False)
     doc.setdefault("late_minutes", 0)
     doc.setdefault("overtime_minutes", 0)
+
+    for item in doc["history"]:
+        if isinstance(item.get("at"), datetime):
+            item["at"] = epoch_ms(item["at"])
+
+        changes = item.get("changes", {})
+        for field_change in changes.values():
+            for side in ("from", "to"):
+                if isinstance(field_change.get(side), datetime):
+                    field_change[side] = epoch_ms(field_change[side])
+
     return doc
+
 
 
 def employee_or_404(emp_code: str) -> dict:
@@ -432,40 +446,53 @@ def list_attendance(
     page_size: int = Query(20, ge=1, le=100),
 ):
     query = {}
+
     if emp_code:
         if db.employees.find_one({"emp_code": emp_code}, {"_id": 1}) is None:
             fail(404, "Employee not found")
         query["emp_code"] = emp_code
+
     if date_from:
         parse_date(date_from, "date_from")
+
     if date_to:
         parse_date(date_to, "date_to")
+
     if date_from and date_to and date_from > date_to:
         fail(422, "date_from must be on or before date_to")
+
     if date_from or date_to:
         query["date"] = {}
+
         if date_from:
             query["date"]["$gte"] = date_from
+
         if date_to:
             query["date"]["$lte"] = date_to
+
     if status:
         if status not in ALL_STATUSES:
             fail(422, "Invalid status")
         query["status"] = status
-    total = db.attendance_logs.count_documents(query)
-    docs = list(db.attendance_logs.find(query, {"_id": 0})
-                .sort([("date", DESCENDING), ("emp_code", ASCENDING)])
-                .skip((page - 1) * page_size).limit(page_size))
-    for doc in docs:
-        doc.setdefault("history", [])
-        doc.setdefault("half_day", False)
-        doc.setdefault("late_minutes", 0)
-        doc.setdefault("overtime_minutes", 0)
-        for field in ("punch_in", "punch_out"):
-            if isinstance(doc.get(field), datetime):
-                doc[field] = epoch_ms(doc[field])
-    return {"items": docs, "total": total, "page": page, "page_size": page_size}
 
+    total = db.attendance_logs.count_documents(query)
+
+    docs = list(
+        db.attendance_logs.find(query, {"_id": 0})
+        .sort([("date", DESCENDING), ("emp_code", ASCENDING)])
+        .skip((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    for doc in docs:
+        serialize_attendance(doc)
+
+    return {
+        "items": docs,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 @app.patch("/attendance/{emp_code}/{date_str}")
 def regularize_attendance(emp_code: str, date_str: str, body: RegularizeIn):
@@ -525,21 +552,20 @@ def regularize_attendance(emp_code: str, date_str: str, body: RegularizeIn):
     else:
         changes.update({"work_hours": None, "late_minutes": 0,
                         "overtime_minutes": 0, "half_day": False})
-
-    
     history_change = {}
     for key, new in changes.items():
-       old = record.get(key)
+        old = record.get(key)
 
-       if old == new:
-          continue
+        if old == new:
+            continue
 
-       if isinstance(old, datetime):
-        old = epoch_ms(old)
-       if isinstance(new, datetime):
-        new = epoch_ms(new)
+        if isinstance(old, datetime):
+            old = epoch_ms(old)
+        if isinstance(new, datetime):
+            new = epoch_ms(new)
 
         history_change[key] = {"from": old, "to": new}
+
 
 
     history_item = {
