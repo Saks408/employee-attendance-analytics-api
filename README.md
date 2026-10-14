@@ -4,7 +4,7 @@ A FastAPI application for employee management, attendance tracking, attendance r
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - MongoDB 6.0 or newer
 - pip
 
@@ -34,9 +34,13 @@ MONGO_DB=attendance_db
 
 Do not commit `.env` or credentials to Git.
 
-## Load Sample Data
 
-If sample data is provided, run:
+## Sample Data
+
+Sample data files are not included in this public repository.
+The application expects the `employees` and `attendance_logs`
+collections to be available in MongoDB.
+
 
 ```bash
 python sample_seed.py
